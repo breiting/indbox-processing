@@ -11,6 +11,14 @@ public class INDbox {
   private SerialPort port;
   private final StringBuilder rx = new StringBuilder(256);
 
+  private boolean connected = false;
+  private String selectedPortSystemName = "";
+  private String selectedPortDescription = "";
+  private int lastBytesAvailable = 0;
+  private long lastLineMillis = 0;
+  private int linesOk = 0;
+  private int linesBad = 0;
+
   private int b1 = 0;
   private int b2 = 0;
   private int pot = 0;
@@ -25,6 +33,8 @@ public class INDbox {
   // portHint = substring match against system port name or description
   public INDbox(PApplet parent, String portHint, int baud) {
     this.p = parent;
+
+	printPorts();
 
     port = autoFindPort(portHint);
     if (port == null) {
@@ -41,8 +51,21 @@ public class INDbox {
       return;
     }
 
-    p.println("[INDbox] Connected: " + port.getSystemPortName() +
-              " (" + safe(port.getDescriptivePortName()) + ")");
+    connected = true;
+    selectedPortSystemName = port.getSystemPortName();
+    selectedPortDescription = safe(port.getDescriptivePortName());
+    p.println("[INDbox] Connected: " + selectedPortSystemName + " (" + selectedPortDescription + ")");
+    p.println("[INDbox] Baud: " + baud);
+  }
+
+  public void printPorts() {
+    SerialPort[] ports = SerialPort.getCommPorts();
+    p.println("[INDbox] Available ports (" + (ports == null ? 0 : ports.length) + "):");
+    if (ports == null) return;
+    for (int i = 0; i < ports.length; i++) {
+      SerialPort sp = ports[i];
+      p.println("  [" + i + "] " + safe(sp.getSystemPortName()) + "  |  " + safe(sp.getDescriptivePortName()));
+    }
   }
 
   public void update() {
@@ -114,14 +137,31 @@ public class INDbox {
       }
     }
 
-    // heuristic: prefer usb/tty-like names in description or system name
+    // heuristic: prefer real USB UART devices, and prefer cu.* over tty.*
+    SerialPort bestCu = null;
+    SerialPort bestTty = null;
+    
     for (SerialPort sp : ports) {
       String sys = safe(sp.getSystemPortName()).toLowerCase();
       String desc = safe(sp.getDescriptivePortName()).toLowerCase();
-      if (sys.contains("usb") || sys.contains("tty") || desc.contains("usb") || desc.contains("serial")) {
-        return sp;
+    
+      boolean looksLikeDevice =
+        sys.contains("usbserial") || sys.contains("usbmodem") ||
+        desc.contains("cp210") || desc.contains("silabs") ||
+        desc.contains("ch340") || desc.contains("usb to uart") ||
+        desc.contains("usb serial") || desc.contains("usbmodem");
+    
+      if (!looksLikeDevice) continue;
+    
+      if (sys.startsWith("cu.")) {
+        if (bestCu == null) bestCu = sp;
+      } else if (sys.startsWith("tty.")) {
+        if (bestTty == null) bestTty = sp;
       }
     }
+    
+    if (bestCu != null) return bestCu;
+    if (bestTty != null) return bestTty;
 
     return ports[0];
   }
