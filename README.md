@@ -7,7 +7,7 @@ b1,b2,pot,dist
 0,1,723,42.7
 
 Build release zip:
-./gradlew packageRelease
+./gradlew buildReleaseArtifacts
 
 Output:
 release/indbox.zip
