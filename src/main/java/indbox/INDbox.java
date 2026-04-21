@@ -1,37 +1,50 @@
 package indbox;
 
-import processing.core.PApplet;
-import processing.event.KeyEvent;
 import com.fazecast.jSerialComm.SerialPort;
-
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import processing.core.PApplet;
+import processing.event.KeyEvent;
 
 /**
  * INDbox provides access to a standardized four-channel input device for Processing.
  *
  * <p>The device exposes:
+ *
  * <ul>
- *   <li>button 1</li>
- *   <li>button 2</li>
- *   <li>one potentiometer value</li>
- *   <li>one distance sensor value</li>
+ *   <li>button 1
+ *   <li>button 2
+ *   <li>one potentiometer value
+ *   <li>one distance sensor value
  * </ul>
  *
  * <p>The class supports two input modes:
+ *
  * <ul>
- *   <li><b>Serial mode</b>: reads values from a physical INDbox over USB serial</li>
- *   <li><b>Simulation mode</b>: emulates the same inputs from the keyboard</li>
+ *   <li><b>Serial mode</b>: reads values from a physical INDbox over USB serial
+ *   <li><b>Simulation mode</b>: emulates the same inputs from the keyboard
  * </ul>
  *
  * <p>Expected serial line format:
+ *
  * <pre>btn1,btn2,pot,dist\n</pre>
  *
  * <p>Example:
+ *
  * <pre>1,0,2048,123.4</pre>
  *
+ * <p>The API intentionally exposes both raw and filtered values:
+ *
+ * <ul>
+ *   <li>{@code potRaw()}, {@code distRaw()} = raw values
+ *   <li>{@code pot()}, {@code dist()} = stable values (default: MEDIAN)
+ *   <li>{@code pot(INDbox.SLEW)}, {@code dist(INDbox.SLEW)} = alternative filtered values
+ * </ul>
+ *
  * <p>Typical usage:
+ *
  * <pre>
  * INDbox box;
  *
@@ -43,25 +56,31 @@ import java.util.Set;
  * void draw() {
  *   box.update();
  *   println(box.button1(), box.button2(), box.potRaw(), box.distRaw());
+ *   println(box.pot(), box.dist());
  * }
  * </pre>
  *
  * <p>Simulation mode:
+ *
  * <pre>
  * box = new INDbox(this, true);
  * </pre>
  *
  * <p>Simulation controls:
+ *
  * <ul>
- *   <li>1 = button 1</li>
- *   <li>2 = button 2</li>
- *   <li>A = increase potentiometer</li>
- *   <li>D = decrease potentiometer</li>
- *   <li>W = increase distance</li>
- *   <li>S = decrease distance</li>
+ *   <li>1 = button 1
+ *   <li>2 = button 2
+ *   <li>A = increase potentiometer
+ *   <li>D = decrease potentiometer
+ *   <li>W = increase distance
+ *   <li>S = decrease distance
  * </ul>
  */
 public class INDbox {
+  public static final int MEDIAN = 0;
+  public static final int SLEW = 1;
+
   private final PApplet p;
   private final InputSource source;
   private final State state = new State();
@@ -69,8 +88,8 @@ public class INDbox {
   /**
    * Creates a new INDbox instance in serial mode.
    *
-   * <p>This constructor attempts to automatically find and open a suitable serial port
-   * using a baud rate of 115200.
+   * <p>This constructor attempts to automatically find and open a suitable serial port using a baud
+   * rate of 115200.
    *
    * @param parent the Processing sketch instance
    */
@@ -94,9 +113,6 @@ public class INDbox {
   /**
    * Creates a new INDbox instance in simulation mode with custom step sizes.
    *
-   * <p>The step sizes define how fast the simulated potentiometer and distance values change
-   * while the corresponding keys are held down.
-   *
    * @param parent the Processing sketch instance
    * @param simulate if true, enable keyboard simulation mode
    * @param potStep change per update step for the potentiometer
@@ -109,9 +125,6 @@ public class INDbox {
   /**
    * Creates a new INDbox instance in serial mode with a custom port hint and baud rate.
    *
-   * <p>The {@code portHint} is matched against the serial system port name and descriptive name.
-   * If no hint is given, the class uses a simple heuristic to choose a likely USB serial device.
-   *
    * @param parent the Processing sketch instance
    * @param portHint optional substring used to match a preferred serial port
    * @param baud the baud rate used to open the serial port
@@ -123,9 +136,6 @@ public class INDbox {
   /**
    * Creates a new INDbox instance with full configuration.
    *
-   * <p>This is the most flexible constructor and allows switching between serial mode
-   * and simulation mode while also setting custom simulation speeds.
-   *
    * @param parent the Processing sketch instance
    * @param portHint optional substring used to match a preferred serial port
    * @param baud the baud rate used in serial mode
@@ -133,7 +143,8 @@ public class INDbox {
    * @param potStep change per update step for the simulated potentiometer
    * @param distStep change per update step for the simulated distance sensor
    */
-  public INDbox(PApplet parent, String portHint, int baud, boolean simulate, int potStep, float distStep) {
+  public INDbox(
+      PApplet parent, String portHint, int baud, boolean simulate, int potStep, float distStep) {
     this.p = parent;
 
     if (simulate) {
@@ -148,31 +159,37 @@ public class INDbox {
   /**
    * Updates the internal input state.
    *
-   * <p>This method should typically be called once per frame inside {@code draw()}.
-   * In serial mode it reads and parses new serial data. In simulation mode it updates
-   * the values based on the current keyboard state.
+   * <p>This method should typically be called once per frame inside {@code draw()}. In serial mode
+   * it reads and parses new serial data. In simulation mode it updates the values based on the
+   * current keyboard state.
+   *
+   * <p>Button press/release events are also updated here.
    */
   public void update() {
     source.update();
+    updateButtonEvents();
+    updateFilters();
   }
 
-  /**
-   * Closes the active input source.
-   *
-   * <p>In serial mode this closes the serial port. In simulation mode this unregisters
-   * the keyboard event handler.
-   */
+  /** Closes the active input source. */
   public void close() {
     source.close();
   }
 
-  /**
-   * Prints all currently available serial ports to the Processing console.
-   *
-   * <p>In simulation mode this prints a short informational message instead.
-   */
+  /** Prints all currently available serial ports to the Processing console. */
   public void printPorts() {
     source.printPorts();
+  }
+
+  /**
+   * Sends a raw text command to the device over serial.
+   *
+   * <p>A newline is appended automatically. In simulation mode this command is ignored.
+   *
+   * @param command the command string to send
+   */
+  public void sendCommand(String command) {
+    source.sendCommand(command);
   }
 
   /**
@@ -189,96 +206,276 @@ public class INDbox {
    *
    * @return 1 if pressed, 0 if not pressed
    */
-  public int button1() { return state.b1; }
+  public int button1() {
+    return state.b1;
+  }
 
   /**
    * Returns the current state of button 2.
    *
    * @return 1 if pressed, 0 if not pressed
    */
-  public int button2() { return state.b2; }
+  public int button2() {
+    return state.b2;
+  }
+
+  /**
+   * Returns true only on the frame button 1 was pressed.
+   *
+   * @return true on press event, otherwise false
+   */
+  public boolean button1Pressed() {
+    return state.b1Pressed;
+  }
+
+  /**
+   * Returns true only on the frame button 1 was released.
+   *
+   * @return true on release event, otherwise false
+   */
+  public boolean button1Released() {
+    return state.b1Released;
+  }
+
+  /**
+   * Returns true only on the frame button 2 was pressed.
+   *
+   * @return true on press event, otherwise false
+   */
+  public boolean button2Pressed() {
+    return state.b2Pressed;
+  }
+
+  /**
+   * Returns true only on the frame button 2 was released.
+   *
+   * @return true on release event, otherwise false
+   */
+  public boolean button2Released() {
+    return state.b2Released;
+  }
 
   /**
    * Returns the current raw potentiometer value.
    *
-   * <p>The value is constrained to the range 0..4095.
-   *
-   * @return the raw potentiometer value
+   * @return the raw potentiometer value in the range 0..4095
    */
-  public int potRaw() { return state.pot; }
+  public int potRaw() {
+    return state.pot;
+  }
 
   /**
    * Returns the current raw distance value.
    *
-   * <p>In serial mode this is the parsed sensor value from the incoming data stream.
-   * In simulation mode this is controlled with the W and S keys.
-   *
    * @return the raw distance value
    */
-  public float distRaw() { return state.dist; }
+  public float distRaw() {
+    return state.dist;
+  }
+
+  /**
+   * Returns a stable potentiometer value using the default filter (MEDIAN).
+   *
+   * @return filtered potentiometer value
+   */
+  public float pot() {
+    return pot(MEDIAN);
+  }
+
+  /**
+   * Returns a stable potentiometer value using the chosen filter mode.
+   *
+   * @param filterType INDbox.MEDIAN or INDbox.SLEW
+   * @return filtered potentiometer value
+   */
+  public float pot(int filterType) {
+    return (filterType == SLEW) ? state.potSlew : state.potMedian;
+  }
+
+  /**
+   * Returns a stable distance value using the default filter (MEDIAN).
+   *
+   * @return filtered distance value
+   */
+  public float dist() {
+    return dist(MEDIAN);
+  }
+
+  /**
+   * Returns a stable distance value using the chosen filter mode.
+   *
+   * @param filterType INDbox.MEDIAN or INDbox.SLEW
+   * @return filtered distance value
+   */
+  public float dist(int filterType) {
+    return (filterType == SLEW) ? state.distSlew : state.distMedian;
+  }
+
+  /**
+   * Sets the valid range for potentiometer filtering.
+   *
+   * @param min minimum value
+   * @param max maximum value
+   */
+  public void setPotRange(int min, int max) {
+    state.potMin = min;
+    state.potMax = max;
+  }
+
+  /**
+   * Sets the valid range for distance filtering.
+   *
+   * @param min minimum value
+   * @param max maximum value
+   */
+  public void setDistRange(float min, float max) {
+    state.distMin = min;
+    state.distMax = max;
+  }
+
+  /**
+   * Sets the maximum step per update for potentiometer slew filtering.
+   *
+   * @param step maximum change per update
+   */
+  public void setPotSlewStep(float step) {
+    state.potSlewStep = Math.max(0.001f, step);
+  }
+
+  /**
+   * Sets the maximum step per update for distance slew filtering.
+   *
+   * @param step maximum change per update
+   */
+  public void setDistSlewStep(float step) {
+    state.distSlewStep = Math.max(0.001f, step);
+  }
 
   /**
    * Returns the last successfully parsed input line.
    *
-   * <p>This can be useful for debugging and diagnostic overlays.
-   *
    * @return the last valid input line
    */
-  public String lastLine() { return state.lastLine; }
+  public String lastLine() {
+    return state.lastLine;
+  }
 
   /**
    * Returns whether the input source is currently connected.
    *
-   * <p>In simulation mode this is always true after initialization.
-   *
    * @return true if connected or active, false otherwise
    */
-  public boolean connected() { return state.connected; }
+  public boolean connected() {
+    return state.connected;
+  }
 
   /**
    * Returns the selected serial port system name.
    *
-   * <p>In simulation mode this returns {@code "SIM"}.
-   *
    * @return the selected port system name
    */
-  public String selectedPortSystemName() { return state.selectedPortSystemName; }
+  public String selectedPortSystemName() {
+    return state.selectedPortSystemName;
+  }
 
   /**
    * Returns the selected serial port description.
    *
-   * <p>In simulation mode this returns a short simulation description.
-   *
    * @return the selected port description
    */
-  public String selectedPortDescription() { return state.selectedPortDescription; }
+  public String selectedPortDescription() {
+    return state.selectedPortDescription;
+  }
 
   /**
    * Returns the number of successfully parsed input lines.
    *
    * @return the number of valid lines
    */
-  public int linesOk() { return state.linesOk; }
+  public int linesOk() {
+    return state.linesOk;
+  }
 
   /**
    * Returns the number of invalid or malformed input lines.
    *
    * @return the number of invalid lines
    */
-  public int linesBad() { return state.linesBad; }
+  public int linesBad() {
+    return state.linesBad;
+  }
 
   /**
    * Returns the timestamp of the last valid line in milliseconds.
    *
-   * <p>The timestamp uses {@code millis()} from the parent Processing sketch.
-   *
    * @return timestamp of the last valid line
    */
-  public long lastLineMillis() { return state.lastLineMillis; }
+  public long lastLineMillis() {
+    return state.lastLineMillis;
+  }
 
-  /**
-   * Internal shared state used by both serial and simulation input sources.
-   */
+  private void updateButtonEvents() {
+    boolean currentB1 = state.b1 == 1;
+    boolean currentB2 = state.b2 == 1;
+
+    state.b1Pressed = currentB1 && !state.prevB1;
+    state.b1Released = !currentB1 && state.prevB1;
+
+    state.b2Pressed = currentB2 && !state.prevB2;
+    state.b2Released = !currentB2 && state.prevB2;
+
+    state.prevB1 = currentB1;
+    state.prevB2 = currentB2;
+  }
+
+  private void updateFilters() {
+    int potClamped = PApplet.constrain(state.pot, state.potMin, state.potMax);
+    float distClamped = PApplet.constrain(state.dist, state.distMin, state.distMax);
+
+    // pot median
+    if (!state.potMedianInitialized) {
+      Arrays.fill(state.potWindow, potClamped);
+      state.potMedian = potClamped;
+      state.potMedianInitialized = true;
+    }
+    state.potWindow[state.potWindowIndex] = potClamped;
+    state.potWindowIndex = (state.potWindowIndex + 1) % state.potWindow.length;
+    int[] potCopy = state.potWindow.clone();
+    Arrays.sort(potCopy);
+    state.potMedian = potCopy[potCopy.length / 2];
+
+    // dist median
+    if (!state.distMedianInitialized) {
+      Arrays.fill(state.distWindow, distClamped);
+      state.distMedian = distClamped;
+      state.distMedianInitialized = true;
+    }
+    state.distWindow[state.distWindowIndex] = distClamped;
+    state.distWindowIndex = (state.distWindowIndex + 1) % state.distWindow.length;
+    float[] distCopy = state.distWindow.clone();
+    Arrays.sort(distCopy);
+    state.distMedian = distCopy[distCopy.length / 2];
+
+    // pot slew
+    if (!state.potSlewInitialized) {
+      state.potSlew = potClamped;
+      state.potSlewInitialized = true;
+    }
+    float potDelta = potClamped - state.potSlew;
+    potDelta = PApplet.constrain(potDelta, -state.potSlewStep, state.potSlewStep);
+    state.potSlew += potDelta;
+
+    // dist slew
+    if (!state.distSlewInitialized) {
+      state.distSlew = distClamped;
+      state.distSlewInitialized = true;
+    }
+    float distDelta = distClamped - state.distSlew;
+    distDelta = PApplet.constrain(distDelta, -state.distSlewStep, state.distSlewStep);
+    state.distSlew += distDelta;
+  }
+
+  /** Internal shared state used by both serial and simulation input sources. */
   private static class State {
     boolean connected = false;
     String selectedPortSystemName = "";
@@ -294,22 +491,53 @@ public class INDbox {
     int pot = 0;
     float dist = 0;
 
+    boolean prevB1 = false;
+    boolean prevB2 = false;
+
+    boolean b1Pressed = false;
+    boolean b1Released = false;
+    boolean b2Pressed = false;
+    boolean b2Released = false;
+
+    int potMin = 0;
+    int potMax = 4095;
+    float distMin = 50;
+    float distMax = 2000;
+
+    int[] potWindow = new int[5];
+    int potWindowIndex = 0;
+    boolean potMedianInitialized = false;
+    float potMedian = 0;
+
+    float[] distWindow = new float[5];
+    int distWindowIndex = 0;
+    boolean distMedianInitialized = false;
+    float distMedian = 0;
+
+    float potSlew = 0;
+    boolean potSlewInitialized = false;
+    float potSlewStep = 40;
+
+    float distSlew = 0;
+    boolean distSlewInitialized = false;
+    float distSlewStep = 6;
+
     String lastLine = "";
   }
 
-  /**
-   * Internal abstraction for different input backends.
-   */
   private interface InputSource {
     void update();
+
     void close();
+
     void printPorts();
+
+    void sendCommand(String command);
+
     boolean isSimulation();
   }
 
-  /**
-   * Serial input backend for physical INDbox hardware.
-   */
+  /** Serial input backend for physical INDbox hardware. */
   private static class SerialInputSource implements InputSource {
     private final PApplet p;
     private final State state;
@@ -317,14 +545,6 @@ public class INDbox {
     private SerialPort port;
     private final StringBuilder rx = new StringBuilder(256);
 
-    /**
-     * Creates a serial input backend and tries to open a suitable serial port.
-     *
-     * @param parent the Processing sketch instance
-     * @param state shared state object
-     * @param portHint optional substring used to match a preferred serial port
-     * @param baud the baud rate used to open the port
-     */
     SerialInputSource(PApplet parent, State state, String portHint, int baud) {
       this.p = parent;
       this.state = state;
@@ -350,7 +570,12 @@ public class INDbox {
       state.selectedPortSystemName = port.getSystemPortName();
       state.selectedPortDescription = safe(port.getDescriptivePortName());
 
-      p.println("[INDbox] Connected: " + state.selectedPortSystemName + " (" + state.selectedPortDescription + ")");
+      p.println(
+          "[INDbox] Connected: "
+              + state.selectedPortSystemName
+              + " ("
+              + state.selectedPortDescription
+              + ")");
       p.println("[INDbox] Baud: " + baud);
     }
 
@@ -388,12 +613,22 @@ public class INDbox {
       }
     }
 
-    /**
-     * Parses one serial line in the format {@code btn1,btn2,pot,dist}.
-     *
-     * @param line the input line to parse
-     * @return true if parsing was successful, false otherwise
-     */
+    @Override
+    public void sendCommand(String command) {
+      if (port == null || command == null) return;
+
+      String msg = command.trim();
+      if (msg.length() == 0) return;
+
+      try {
+        byte[] data = (msg + "\n").getBytes(StandardCharsets.UTF_8);
+        port.writeBytes(data, data.length);
+        p.println("[INDbox] Sent command: " + msg);
+      } catch (Exception e) {
+        p.println("[INDbox] Failed to send command: " + msg);
+      }
+    }
+
     private boolean parseLine(String line) {
       String[] parts = PApplet.split(line, ',');
       if (parts == null || parts.length < 4) return false;
@@ -421,15 +656,6 @@ public class INDbox {
       }
     }
 
-    /**
-     * Attempts to find a suitable serial port.
-     *
-     * <p>If a hint is provided, it is matched first. Otherwise a simple heuristic is used
-     * to prefer likely USB serial devices.
-     *
-     * @param hint optional substring used to match a preferred port
-     * @return the selected serial port, or null if none was found
-     */
     private SerialPort autoFindPort(String hint) {
       SerialPort[] ports = SerialPort.getCommPorts();
       if (ports == null || ports.length == 0) return null;
@@ -451,10 +677,14 @@ public class INDbox {
         String desc = safe(sp.getDescriptivePortName()).toLowerCase();
 
         boolean looksLikeDevice =
-          sys.contains("usbserial") || sys.contains("usbmodem") ||
-          desc.contains("cp210") || desc.contains("silabs") ||
-          desc.contains("ch340") || desc.contains("usb to uart") ||
-          desc.contains("usb serial") || desc.contains("usbmodem");
+            sys.contains("usbserial")
+                || sys.contains("usbmodem")
+                || desc.contains("cp210")
+                || desc.contains("silabs")
+                || desc.contains("ch340")
+                || desc.contains("usb to uart")
+                || desc.contains("usb serial")
+                || desc.contains("usbmodem");
 
         if (!looksLikeDevice) continue;
 
@@ -491,7 +721,13 @@ public class INDbox {
 
       for (int i = 0; i < ports.length; i++) {
         SerialPort sp = ports[i];
-        p.println("  [" + i + "] " + safe(sp.getSystemPortName()) + "  |  " + safe(sp.getDescriptivePortName()));
+        p.println(
+            "  ["
+                + i
+                + "] "
+                + safe(sp.getSystemPortName())
+                + "  |  "
+                + safe(sp.getDescriptivePortName()));
       }
     }
 
@@ -500,20 +736,12 @@ public class INDbox {
       return false;
     }
 
-    /**
-     * Returns a non-null version of the given string.
-     *
-     * @param s input string
-     * @return the original string, or an empty string if null
-     */
     private String safe(String s) {
       return (s == null) ? "" : s;
     }
   }
 
-  /**
-   * Simulation backend using keyboard input instead of serial data.
-   */
+  /** Simulation backend using keyboard input instead of serial data. */
   public static class SimulatedInputSource implements InputSource {
     private final PApplet p;
     private final State state;
@@ -523,14 +751,6 @@ public class INDbox {
     private final int potStep;
     private final float distStep;
 
-    /**
-     * Creates a new simulation backend.
-     *
-     * @param parent the Processing sketch instance
-     * @param state shared state object
-     * @param potStep change per update step for the potentiometer
-     * @param distStep change per update step for the distance value
-     */
     SimulatedInputSource(PApplet parent, State state, int potStep, float distStep) {
       this.p = parent;
       this.state = state;
@@ -559,20 +779,17 @@ public class INDbox {
       state.dist = PApplet.constrain(state.dist, 0, 500);
 
       state.lastLine =
-        state.b1 + "," +
-        state.b2 + "," +
-        state.pot + "," +
-        PApplet.nf(state.dist, 0, 2);
+          state.b1 + "," + state.b2 + "," + state.pot + "," + PApplet.nf(state.dist, 0, 2);
 
       state.lastLineMillis = p.millis();
       state.linesOk++;
     }
 
-    /**
-     * Receives Processing key events and tracks which keys are currently held down.
-     *
-     * @param e the Processing key event
-     */
+    @Override
+    public void sendCommand(String command) {
+      p.println("[INDbox] Simulation mode: command ignored -> " + command);
+    }
+
     public void keyEvent(KeyEvent e) {
       int action = e.getAction();
       char k = Character.toLowerCase(e.getKey());
@@ -584,12 +801,6 @@ public class INDbox {
       }
     }
 
-    /**
-     * Returns whether a given key is currently pressed.
-     *
-     * @param c the key to test
-     * @return true if the key is held down
-     */
     private boolean isDown(char c) {
       return keysDown.contains((int) Character.toLowerCase(c));
     }

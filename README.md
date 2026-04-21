@@ -11,3 +11,7 @@ Build release zip:
 
 Output:
 release/indbox.zip
+
+## Changelog
+
+2026-04-21: Added filtering and send commands (requires new firmware v1.1)
